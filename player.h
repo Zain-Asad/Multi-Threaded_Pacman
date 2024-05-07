@@ -4,25 +4,34 @@
 #include <SFML/Graphics.hpp>
 #include <pthread.h>
 #include <cmath>
+
 #include "ghosts.h"
 
 const float PACMAN_SIZE = 0.04f;
 
 class Ghost; // Forward declaration
+class GameBoard;
 
 class Pacman {
 private:
-    float pacmanPosX, pacmanPosY;
+    const int window_width, window_height;
+    int pacmanPosX, pacmanPosY;
     float pacmanSpeed, pacmanRadius;
     int pacmanLives, score;
+    
+    sf::CircleShape pacman;
+
     pthread_mutex_t pacman_input;
     Direction direction;
 
 public:
-    Pacman(pthread_mutex_t pacman) : pacmanPosX(0.0f), pacmanPosY(0.0f),
-                                     pacmanSpeed(0.003f), pacmanRadius(PACMAN_SIZE / 2),
-                                     pacmanLives(3), score(0),
-                                     pacman_input(pacman), direction(RIGHT) {}
+    Pacman(const int width, const int height, pthread_mutex_t pacman) : 
+                                    window_width(width), window_height(height),
+                                    pacmanPosX((window_width/2)), pacmanPosY((window_height/2)),
+                                    pacmanSpeed(2.00f), pacmanRadius(PACMAN_SIZE / 2),
+                                    pacmanLives(3), score(0),
+                                    pacman_input(pacman), direction(RIGHT),
+                                    pacman(pacmanRadius * 100) {}
 
     float getPacmanPosX() {
         return pacmanPosX;
@@ -48,12 +57,18 @@ public:
         return pacmanLives;
     }
 
+    // void drawPacman(sf::RenderWindow &window) {
+    //     pacman.setRadius(pacmanRadius * 200); // Increased size
+    //     pacman.setFillColor(sf::Color::Yellow);
+    //     pacman.setPosition((pacmanPosX + 1) * window.getSize().x / 2 - pacman.getRadius(),
+    //                        (-pacmanPosY + 1) * window.getSize().y / 2 - pacman.getRadius());
+    //     window.draw(pacman);
+    // }
+
     void drawPacman(sf::RenderWindow &window) {
-        sf::CircleShape pacman(pacmanRadius * 100);
         pacman.setRadius(pacmanRadius * 200); // Increased size
         pacman.setFillColor(sf::Color::Yellow);
-        pacman.setPosition((pacmanPosX + 1) * window.getSize().x / 2 - pacman.getRadius(),
-                           (-pacmanPosY + 1) * window.getSize().y / 2 - pacman.getRadius());
+        pacman.setPosition(pacmanPosX, pacmanPosY);
         window.draw(pacman);
     }
 
@@ -66,39 +81,69 @@ public:
         pthread_mutex_unlock(&pacman_input);
     }
 
-    void move() {
+    bool collideWithWall(GameBoard& game, int posX, int posY) {
+        return game.getBoard(posY/wall_pixels, posX/wall_pixels) == 1;
+    }
+
+    // void move(GameBoard& game) {
+    //     pthread_mutex_lock(&pacman_input);
+    //     switch (direction) {
+    //         case UP:
+    //             //if(!collideWithWall(game))
+    //                 pacmanPosY += pacmanSpeed;   
+    //             break;
+    //         case DOWN:
+    //             //if(!collideWithWall(game))
+    //                 pacmanPosY -= pacmanSpeed;
+    //             break;
+    //         case LEFT:
+    //             //if(!collideWithWall(game))
+    //                 pacmanPosX -= pacmanSpeed;
+    //             break;
+    //         case RIGHT:
+    //             //if(!collideWithWall(game))
+    //                 pacmanPosX += pacmanSpeed;
+    //             break;
+    //     }
+    //     pthread_mutex_unlock(&pacman_input);
+    // }
+
+    void move(GameBoard& game) {
         pthread_mutex_lock(&pacman_input);
         switch (direction) {
             case UP:
-                pacmanPosY += pacmanSpeed;
+                if(!collideWithWall(game, pacmanPosX, pacmanPosY-pacmanSpeed)) 
+                    pacmanPosY -= pacmanSpeed;   
                 break;
             case DOWN:
-                pacmanPosY -= pacmanSpeed;
+                if(!collideWithWall(game, pacmanPosX, pacmanPosY+pacmanSpeed)) 
+                    pacmanPosY += pacmanSpeed;
                 break;
             case LEFT:
-                pacmanPosX -= pacmanSpeed;
+                if(!collideWithWall(game, pacmanPosX-pacmanSpeed, pacmanPosY)) 
+                    pacmanPosX -= pacmanSpeed;
                 break;
             case RIGHT:
-                pacmanPosX += pacmanSpeed;
+                if(!collideWithWall(game, pacmanPosX+pacmanSpeed, pacmanPosY)) 
+                    pacmanPosX += pacmanSpeed;
                 break;
         }
         pthread_mutex_unlock(&pacman_input);
     }
+    
 
     void decrementPacmanLives(){
         pacmanLives--;
     }
 
     bool collidesWithGhost(Ghost& ghost) {
-        sf::CircleShape pacman(pacmanRadius * 100);
-        pacman.setRadius(pacmanRadius * 200); // Increased size
         pacman.setOrigin(pacmanRadius * 100, pacmanRadius * 100);
-        pacman.setPosition((pacmanPosX + 1) * 640, (-pacmanPosY + 1) * 360);
+        pacman.setPosition((pacmanPosX + 1), (-pacmanPosY + 1));
 
         sf::CircleShape ghostShape(GHOST_SIZE * 100);
         ghostShape.setRadius(GHOST_SIZE * 200); // Increased size
         ghostShape.setOrigin(GHOST_SIZE * 100, GHOST_SIZE * 100);
-        ghostShape.setPosition((ghost.getPosX() + 1) * 640, (-ghost.getPosY() + 1) * 360);
+        ghostShape.setPosition((ghost.getPosX() + 1), (-ghost.getPosY() + 1));
 
         return pacman.getGlobalBounds().intersects(ghostShape.getGlobalBounds());
     }

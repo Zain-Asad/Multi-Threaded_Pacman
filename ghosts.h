@@ -6,6 +6,8 @@
 #include <pthread.h>
 #include <cmath>
 
+#include "gameboard.h"
+
 const float GHOST_SIZE = 0.04f;
 enum Direction { UP, DOWN, LEFT, RIGHT };
 
@@ -18,29 +20,37 @@ private:
     Direction direction;
 
     float targetX, targetY;
+    sf::CircleShape ghost;
 
 public:
-    Ghost(float x, float y, float s) : posX(x), posY(y), speed(s), direction(UP) {}
+    Ghost(float x, float y, float s) : posX(x), posY(y), speed(s), direction(UP),
+                                       ghost(GHOST_SIZE * 100) {}
 
     void drawGhost(sf::RenderWindow &window) {
-        sf::CircleShape ghost(GHOST_SIZE * 100);
         ghost.setRadius(GHOST_SIZE * 200); // Increased size
         ghost.setFillColor(sf::Color::Red);
-        ghost.setPosition((posX + 1) * window.getSize().x / 2 - ghost.getRadius(),
-                          (-posY + 1) * window.getSize().y / 2 - ghost.getRadius());
+        // ghost.setPosition((posX + 1) * window.getSize().x / 2 - ghost.getRadius(),
+        //                   (-posY + 1) * window.getSize().y / 2 - ghost.getRadius());
+        ghost.setPosition(posX, posY);
         window.draw(ghost);
     }
 
-    void move(float playerPosX, float playerPosY) {
+    bool collidesWithWall(GameBoard& game, int x, int y) {
+        return game.getBoard(y/wall_pixels, x/wall_pixels) == 1;
+    }
+
+    void move(GameBoard& game, int playerPosX, float playerPosY) {
         float dx = playerPosX - posX;
         float dy = playerPosY - posY;
         float distance = sqrt(dx * dx + dy * dy);
 
-        if (distance < 0.001f) {
-            
+        if (distance < 1.00f) {
+            //Do nothing.
         } else {
-            posX += speed * dx / distance;
-            posY += speed * dy / distance;
+            if(!collidesWithWall(game, posX + speed * dx / distance, posY + speed * dy / distance)) {
+                posX += speed * dx / distance;
+                posY += speed * dy / distance;
+            }
         }
     }
 
