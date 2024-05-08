@@ -14,10 +14,12 @@ private:
     std::vector<std::vector<int>> board;
 
     sf::RectangleShape wall;
+    sf::Texture water;
 public:
     GameBoard(int WINDOW_WIDTH, int WINDOW_HEIGHT) : boardXsize(WINDOW_WIDTH/wall_pixels), boardYsize(WINDOW_HEIGHT/wall_pixels), board(boardYsize, std::vector<int>(boardXsize)),
-                                                     wall (sf::Vector2f(wall_pixels, wall_pixels)) 
+                                                     wall (sf::Vector2f(wall_pixels, wall_pixels))
     { 
+        water.loadFromFile("Pictures/level1_block.png");
         board = { 
             {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, 
             {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, 
@@ -47,7 +49,10 @@ public:
         }; 
     }
 
-    int getBoard(int row, int column) { return board[row][column];  }
+    int getBoard(int row, int column) { 
+        if(row>=0 && row<boardYsize && column>=0 && column<boardXsize)
+            return board[row][column];  
+    }
     int getBoardXSize() {   return boardXsize;  }
     int getBoardYSize() {   return boardYsize;  }
 
@@ -56,7 +61,8 @@ public:
             for(int col=0; col<boardXsize; col++) {
                 if(board[row][col] == 1) {
                     wall.setPosition(col * wall_pixels, row * wall_pixels);
-                    wall.setFillColor(sf::Color::Blue);
+                    //wall.setFillColor(sf::Color::Blue);
+                    wall.setTexture(&water);
                     window.draw(wall);
                 }
             }

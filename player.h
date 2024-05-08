@@ -112,19 +112,19 @@ public:
         pthread_mutex_lock(&pacman_input);
         switch (direction) {
             case UP:
-                if(!collideWithWall(game, pacmanPosX, pacmanPosY-pacmanSpeed)) 
+                if(!collideWithWall(game, pacmanPosX, pacmanPosY-pacmanSpeed-3)) 
                     pacmanPosY -= pacmanSpeed;   
                 break;
             case DOWN:
-                if(!collideWithWall(game, pacmanPosX, pacmanPosY+pacmanSpeed)) 
+                if(!collideWithWall(game, pacmanPosX, pacmanPosY+pacmanSpeed+3)) 
                     pacmanPosY += pacmanSpeed;
                 break;
             case LEFT:
-                if(!collideWithWall(game, pacmanPosX-pacmanSpeed, pacmanPosY)) 
+                if(!collideWithWall(game, pacmanPosX-pacmanSpeed-3, pacmanPosY)) 
                     pacmanPosX -= pacmanSpeed;
                 break;
             case RIGHT:
-                if(!collideWithWall(game, pacmanPosX+pacmanSpeed, pacmanPosY)) 
+                if(!collideWithWall(game, pacmanPosX+pacmanSpeed+3, pacmanPosY)) 
                     pacmanPosX += pacmanSpeed;
                 break;
         }
