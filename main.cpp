@@ -1,27 +1,29 @@
 #include "player.h"
 #include "ghosts.h"
+
 #include <SFML/Graphics.hpp>
 #include <pthread.h>
+#include <semaphore.h>
 #include <unistd.h>
 #include <iostream>
 
 using namespace std;
-
+using namespace sf;
 const int WINDOW_WIDTH = 1280;
 const int WINDOW_HEIGHT = 720;
 const int FPS = 60;
 const int NUM_GHOSTS = 4;
 
-pthread_mutex_t pacman_input;
+pthread_mutex_t pacman_input, ghost_mutex[NUM_GHOSTS];
 pthread_mutex_t draw_mutex;
-pthread_mutex_t ghost_mutex[NUM_GHOSTS];
 
-Pacman player(pacman_input);
+GameBoard game(WINDOW_WIDTH, WINDOW_HEIGHT);
+Pacman player(WINDOW_WIDTH, WINDOW_HEIGHT, pacman_input);
 Ghost ghosts[NUM_GHOSTS] = {
-    Ghost(-0.2f, 0.5f, 0.003f),
-    Ghost(0.2f, 0.5f, 0.003f),
-    Ghost(-0.2f, -0.5f, 0.003f),
-    Ghost(0.2f, -0.5f, 0.003f)
+    Ghost(WINDOW_WIDTH/2 - 100, WINDOW_HEIGHT/2 - 80, 1.0f),
+    Ghost(WINDOW_WIDTH/2 + 100, WINDOW_HEIGHT/2 - 80, 1.0f),
+    Ghost(WINDOW_WIDTH/2 - 100, WINDOW_HEIGHT/2 + 80, 1.0f),
+    Ghost(WINDOW_WIDTH/2 + 100, WINDOW_HEIGHT/2 + 80, 1.0f)
 };
 
 bool gameActive = true;
@@ -30,6 +32,7 @@ void drawMap(sf::RenderWindow &window) {
     pthread_mutex_lock(&draw_mutex);
     window.clear(sf::Color::Black);
 
+    game.drawGameBoard(window);
     player.drawPacman(window);
 
     for (int i = 0; i < NUM_GHOSTS; ++i) {
@@ -39,7 +42,7 @@ void drawMap(sf::RenderWindow &window) {
     }
 
     sf::Font font;
-    if (!font.loadFromFile("arial.ttf")) {
+    if (!font.loadFromFile("Assets/Samdan.ttf")) {
         std::cerr << "Error loading font\n";
     }
 
@@ -50,11 +53,11 @@ void drawMap(sf::RenderWindow &window) {
 
     std::string scoreStr = "Score: " + std::to_string(player.getScore()) + " Lives: " + std::to_string(player.getPacmanLives());
     text.setString(scoreStr);
-    text.setPosition(-500, -300);
+    text.setPosition(25, 30);
     window.draw(text);
 
     if (!gameActive) {
-        std::string message = "Game Over! Your score: " + std::to_string(player.getScore()) + ". Press r to restart or q to quit.";
+        std::string message = "Game Over! Your score: " + std::to_string(player.getScore());
         text.setString(message);
         text.setPosition(-150, 0);
         window.draw(text);
@@ -72,27 +75,18 @@ void keyPressed(sf::Event::KeyEvent &keyEvent) {
     player.handleKeypress();
 }
 
-void keyReleased(sf::Event::KeyEvent &keyEvent) {
-    // Unused
-}
+void keyReleased(sf::Event::KeyEvent &keyEvent) {}
 
 void* playerMove(void*) {
     while (gameActive) {
-        player.move();
-
-        float posX = player.getPacmanPosX();
-        float posY = player.getPacmanPosY();
-        posX = std::min(1.0f - PACMAN_SIZE, std::max(-1.0f + PACMAN_SIZE, posX));
-        posY = std::min(0.85f - PACMAN_SIZE, std::max(-1.0f + PACMAN_SIZE, posY));
-        player.setPacmanPosX(posX);
-        player.setPacmanPosY(posY);
+        player.move(game);        
 
         for (int i = 0; i < NUM_GHOSTS; ++i) {
             pthread_mutex_lock(&ghost_mutex[i]);
             if (player.collidesWithGhost(ghosts[i])) {
                 player.decrementPacmanLives();
-                player.setPacmanPosX(0.0f);
-                player.setPacmanPosY(0.0f);
+                player.setPacmanPosX(WINDOW_WIDTH/2);
+                player.setPacmanPosY(WINDOW_HEIGHT/2);
 
                 if (player.getPacmanLives() <= 0) {
                     gameActive = false;
@@ -110,19 +104,32 @@ void* moveGhost(void* arg) {
     int ghostIndex = *((int*)arg) - 1;
     while (gameActive) {
         pthread_mutex_lock(&ghost_mutex[ghostIndex]);
-        ghosts[ghostIndex].move(player.getPacmanPosX(), player.getPacmanPosY());
+        if (ghosts[ghostIndex].ghostHouse()) {
+            ghosts[ghostIndex].setcanMove(true);
+        }
         pthread_mutex_unlock(&ghost_mutex[ghostIndex]);
-        usleep(100000);
+
+        if (ghosts[ghostIndex].getcanMove()) {
+            pthread_mutex_lock(&ghost_mutex[ghostIndex]);
+            ghosts[ghostIndex].move(game, player.getPacmanPosX(), player.getPacmanPosY());
+            pthread_mutex_unlock(&ghost_mutex[ghostIndex]);
+        }
+
+        usleep(10000);
     }
     return NULL;
 }
 
+
+
 int main() {
     pthread_mutex_init(&pacman_input, NULL);
     pthread_mutex_init(&draw_mutex, NULL);
-
+    sem_init(&Ghost::permit, 0, 2);
+    sem_init(&Ghost::key, 0, 2);
     sf::RenderWindow window(sf::VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), "Pacman 1.0");
-
+    Vector2i winoffset(100,100);
+    window.setPosition(winoffset);
     pthread_t playerThread;
     pthread_create(&playerThread, NULL, playerMove, NULL);
     pthread_t ghostThread[NUM_GHOSTS];
