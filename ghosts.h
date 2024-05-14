@@ -5,10 +5,21 @@
 #include <pthread.h>
 #include <cmath>
 #include <queue>
-#include "gameboard.h"
 #include <semaphore.h>
+#include <iostream>
+
+#include "gameboard.h"
+#include "pellets.h"
 
 using namespace std;
+
+// Function to check if two circles intersect
+bool ghost_pellet_Intersect(float x1, float y1, float r1, float x2, float y2, float r2) {
+    float dx = x2 - x1;
+    float dy = y2 - y1;
+    float distance = std::sqrt(dx * dx + dy * dy);
+    return distance < r1 + r2;
+}
 
 const float GHOST_SIZE = 0.04f;
 enum Direction
@@ -37,15 +48,17 @@ public:
     static sem_t permit;
     static sem_t key;
     
-    Ghost(float x, float y, float s) : direction(UP), ghost(GHOST_SIZE * 100), canMove(false) {
+    Ghost(float x, float y, float s) : direction(UP), ghost(GHOST_SIZE*200), canMove(false) {
         posX = x;
         posY = y;
         speed = s;
     }
 
+    sf::CircleShape getGhostShape() { return ghost; }
+    
     void drawGhost(sf::RenderWindow &window)
     {
-        ghost.setRadius(GHOST_SIZE * 200);
+        ghost.setRadius(GHOST_SIZE*200);
         ghost.setFillColor(sf::Color::Red);
         ghost.setPosition(posX, posY);
         window.draw(ghost);
@@ -54,6 +67,14 @@ public:
     bool collidesWithWall(GameBoard &game, int x, int y)
     {
         return game.getBoard(y / wall_pixels, x / wall_pixels) == 1;
+    }
+
+    bool collidesWithPellet(Pellets& pellet, int index, int ghostX, int ghostY) {
+        sf::CircleShape pellet_shape;
+        pellet_shape.setRadius(10); // Increased size
+        pellet_shape.setPosition((pellet.getPosX_player(index) + 1), (-pellet.getPosY_player(index) + 1));
+
+        return ghost_pellet_Intersect(ghostX, ghostY, GHOST_SIZE * 200, pellet.getPosX_player(index), pellet.getPosY_player(index), 10);
     }
 
     vector<pair<int, int>> shortestPath(GameBoard &game, int startX, int startY, int endX, int endY)
@@ -97,9 +118,54 @@ public:
         return path;
     }
 
-    void move(GameBoard &game, int playerPosX, int playerPosY)
+    int shortestPathDistance(GameBoard &game, int startX, int startY, int endX, int endY) {
+        if (startX == endX && startY == endY) {
+            return 0;
+        }
+
+        int boardYSize = game.getBoardYSize();
+        int boardXSize = game.getBoardXSize();
+        vector<vector<int>> dist(boardYSize, vector<int>(boardXSize, INT_MAX));
+        queue<pair<int, int>> q;
+
+        dist[startY][startX] = 0;
+        q.push({startY, startX});
+
+        while (!q.empty()) {
+            auto [row, col] = q.front();
+            q.pop();
+
+            vector<pair<int, int>> adjCells = game.getAdjacentCells(row, col);
+            for (const auto& [adjRow, adjCol] : adjCells) {
+                if (dist[adjRow][adjCol] == INT_MAX && game.getBoard(adjRow, adjCol) == 0) { 
+                    dist[adjRow][adjCol] = dist[row][col] + 1;
+                    q.push({adjRow, adjCol});
+
+                    if (adjRow == endY && adjCol == endX) {
+                        return dist[adjRow][adjCol];
+                    }
+                }
+            }
+        }
+        return dist[endY][endX] == INT_MAX ? -1 : dist[endY][endX];
+    }
+
+    void move(GameBoard &game, int playerPosX, int playerPosY, Pellets& pellet, int index, sf::Clock& c)
     {
-        vector<pair<int, int>> path = shortestPath(game, posX / wall_pixels, posY / wall_pixels, playerPosX / wall_pixels, playerPosY / wall_pixels);
+        int distance_btw_pellet = shortestPathDistance(game, posX/wall_pixels, posY/wall_pixels, pellet.getPosX_ghost(index)/wall_pixels, pellet.getPosY_ghost(index)/wall_pixels);
+        int distance_btw_player = shortestPathDistance(game, posX/wall_pixels, posY/wall_pixels, playerPosX/wall_pixels, playerPosY/wall_pixels);
+
+        float minX, minY;
+
+        if (distance_btw_pellet <= distance_btw_player) {
+            minX = pellet.getPosX_ghost(index);
+            minY = pellet.getPosY_ghost(index);
+        }
+        else {
+            minX = playerPosX;
+            minY = playerPosY;
+        }
+        vector<pair<int, int>> path = shortestPath(game, posX / wall_pixels, posY / wall_pixels, minX / wall_pixels, minY / wall_pixels);
         if (!path.empty())
         {
             int nextRow = path[0].first;
@@ -109,13 +175,14 @@ public:
             float dx = targetX - posX;
             float dy = targetY - posY;
             float distance = sqrt(dx * dx + dy * dy);
-            if (distance > 1.00f)
-            {
-                if (!collidesWithWall(game, posX + speed * dx / distance, posY + speed * dy / distance))
-                {
-                    posX += speed * dx / distance;
-                    posY += speed * dy / distance;
-                }
+            
+            if(collidesWithPellet(pellet, index, posX+speed, posY+speed)) {
+                pellet.setCollision_ghost(index);    pellet.setPosition_ghost(index);    c.restart();
+            }
+
+            if (!collidesWithWall(game, posX + speed * dx / distance, posY + speed * dy / distance)) {
+                posX += speed * dx / distance;
+                posY += speed * dy / distance;
             }
         }
     }
@@ -133,7 +200,6 @@ public:
 
         if (permitAcquired && keyAcquired) {
             return true;
-            canMove = true;
         }
 
         if (permitAcquired) {
@@ -146,15 +212,13 @@ public:
         return false;
     }
 
-    float getPosX()
-    {
-        return posX;
-    }
+    void increaseSpeed(float value) {   speed+= value;  }
 
-    float getPosY()
-    {
-        return posY;
-    }
+    float getPosX() {   return posX;    }
+    float getPosY() {   return posY;    }
+
+    void setPosX(float value)  { posX = value;   }
+    void setPosY(float value)  { posY = value;   }
 
     bool getcanMove() {return canMove;}
     void setcanMove(bool x) {canMove = x;}
